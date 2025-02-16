@@ -33,7 +33,12 @@
       <artifactId>jackson-databind</artifactId>
       <version>2.15.0</version>
     </dependency>
-
+    <!-- Maven -->
+    <dependency>
+      <groupId>org.jetbrains</groupId>
+      <artifactId>annotations</artifactId>
+      <version>24.0.1</version>
+    </dependency>
     <!-- https://mvnrepository.com/artifact/org.projectlombok/lombok -->
     <dependency>
       <groupId>org.projectlombok</groupId>

@@ -19,24 +19,32 @@ public class TransactionManager {
     }
 
     public void commitTransaction(long txId, Map<String, Database> database) throws TransactionException {
-        Transaction tx = activeTransactions.remove(txId);
+        Transaction tx = activeTransactions.get(txId);
         if (tx == null) throw new TransactionException("Invalid transaction ID");
-
-        try {
-            tx.commit(database);
-        } finally {
-            tx.cleanup();
-        }
+        tx.commit(database);
     }
 
     public void rollbackTransaction(long txId) {
-        Transaction tx = activeTransactions.remove(txId);
-        if (tx != null) {
-            tx.rollback();
-        }
+        removeTransaction(txId);
     }
 
     public Transaction getTransaction(long txId) {
         return activeTransactions.get(txId);
     }
+
+    public void setDatabase(long txId, Map<String, Database> database){
+        Transaction tx = activeTransactions.get(txId);
+        if (tx != null) {
+            tx.setTransaction(database);
+        }
+    }
+
+    public Map<String, Database> getDatabase(long txId){
+        return activeTransactions.get(txId).getTransaction();
+    }
+
+    public void removeTransaction(long txId){
+        activeTransactions.remove(txId);
+    }
+
 }

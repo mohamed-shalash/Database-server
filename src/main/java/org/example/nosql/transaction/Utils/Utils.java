@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class Utils {
     private static final String SAVE_FILE = "database.ser";
-    public  void saveDatabases(Map<String, Database> databases) {
+    public static synchronized  void saveDatabases(Map<String, Database> databases) {
         try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(SAVE_FILE))) {
             oos.writeObject(new ConcurrentHashMap<>(databases));
             System.out.println("Database snapshot saved");
