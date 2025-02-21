@@ -95,6 +95,24 @@ public class ClientHandler implements Runnable  {
                     return handleInsert(tbl, jsonObjects.get(0), transaction);
 
                 case "FIND":
+                    if (words.length > 2 && words[1].equalsIgnoreCase("JOIN")) {
+                        String joinType = words[2].toUpperCase(); // INNER, LEFT, RIGHT
+                        String table1 = words[3];
+                        String table2 = words[4];
+                        String[] joinCondition = words[6].split("="); // Extract field names
+
+                        if (joinCondition.length != 2) return "ERROR: Invalid JOIN syntax.";
+
+                        // Extract JSON filter (if provided)
+                        String queryJson = jsonObjects.size() > 0 ? jsonObjects.get(0) : "{}";
+
+                        return handleFindWithJoin(
+                                joinType,
+                                table1, table2,
+                                joinCondition[0].trim(), joinCondition[1].trim(),
+                                queryJson
+                        );
+                    }
                     return handleFind(tbl, jsonObjects.size() > 0 ? jsonObjects.get(0) : "{}");
 
                 case "UPDATE":
@@ -119,6 +137,70 @@ public class ClientHandler implements Runnable  {
             return "unValid command";
         }
     }
+
+
+    private String handleFindWithJoin(String joinType, String primaryCollection, String secondaryCollection, String field1, String field2, String queryStr) throws JsonProcessingException {
+        Collections primary = getCollection(primaryCollection);
+        Collections secondary = getCollection(secondaryCollection);
+
+        if (primary == null || secondary == null) {
+            return "ERROR: One or both collections not found.";
+        }
+
+        Map<String, Object> query = parseJson(queryStr);
+        StringBuilder result = new StringBuilder();
+
+        Set<Object> matchedRightSideKeys = new HashSet<>(); // Track matched right-side records
+
+        // Process LEFT JOIN & INNER JOIN
+        for (Document doc1 : primary.getDocuments().values()) {
+            Object joinValue1 = doc1.getData().get(field1);
+            boolean matched = false;
+
+            for (Document doc2 : secondary.getDocuments().values()) {
+                Object joinValue2 = doc2.getData().get(field2);
+                if (joinValue1 != null && joinValue1.equals(joinValue2)) {
+                    matchedRightSideKeys.add(doc2.getId()); // Mark as matched
+                    Map<String, Object> mergedData = new HashMap<>(doc1.getData());
+                    mergedData.putAll(doc2.getData()); // Merge records
+
+                    if (matchesQuery(mergedData, query)) {
+                        result.append(mergedData).append("\n");
+                    }
+                    matched = true;
+                }
+            }
+
+            // LEFT JOIN: If no match, still include left table data with null right-side fields
+            if (!matched && joinType.equals("LEFT")) {
+                Map<String, Object> leftJoinData = new HashMap<>(doc1.getData());
+                for (String key : secondary.getDocuments().values().stream().findFirst().get().getData().keySet()) {
+                    leftJoinData.putIfAbsent(key, null); // Fill missing fields with null
+                }
+                if (matchesQuery(leftJoinData, query)) {
+                    result.append(leftJoinData).append("\n");
+                }
+            }
+        }
+
+        // RIGHT JOIN: Include unmatched records from the right table
+        if (joinType.equals("RIGHT")) {
+            for (Document doc2 : secondary.getDocuments().values()) {
+                if (!matchedRightSideKeys.contains(doc2.getId())) {
+                    Map<String, Object> rightJoinData = new HashMap<>(doc2.getData());
+                    for (String key : primary.getDocuments().values().stream().findFirst().get().getData().keySet()) {
+                        rightJoinData.putIfAbsent(key, null);
+                    }
+                    if (matchesQuery(rightJoinData, query)) {
+                        result.append(rightJoinData).append("\n");
+                    }
+                }
+            }
+        }
+
+        return result.length() > 0 ? result.toString() : "No matching records found.";
+    }
+
 
     private List<String> extractJsonObjects(String command) {
         List<String> jsonObjects = new ArrayList<>();

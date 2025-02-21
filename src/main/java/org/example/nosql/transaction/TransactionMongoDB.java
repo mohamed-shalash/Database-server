@@ -71,6 +71,7 @@ public class TransactionMongoDB {
  *
  * add join command
  * add nested command
+ * clean code
  * save indexes in seperate database
  * commit index
  * make find output more pretty
@@ -79,5 +80,10 @@ public class TransactionMongoDB {
  * add readme file
  * use pages
  * make it in production stuff
- *
+ *  Implement WAL for crash recovery
+ *  Add connection pooling
+ *  Implement proper query parser
+ *  Add replication support
+ * Implement MVCC for better concurrency
+ * add sql life cycle
  */
