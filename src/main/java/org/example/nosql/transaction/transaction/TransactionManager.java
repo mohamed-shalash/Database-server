@@ -1,6 +1,6 @@
 package org.example.nosql.transaction.transaction;
 
-import org.example.nosql.transaction.Utils.Database;
+import org.example.nosql.transaction.structure.Database;
 import org.example.nosql.transaction.exceptions.TransactionException;
 
 import java.util.Map;

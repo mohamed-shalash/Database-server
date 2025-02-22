@@ -1,207 +1,161 @@
 package org.example.nosql.temp;
-
-
-import org.example.nosql.storage.PersistentMongoDB;
-import org.example.nosql.transaction.Utils.Collections;
-import org.example.nosql.transaction.Utils.Document;
-import org.example.nosql.transaction.exceptions.TransactionException;
-
-import java.io.Serializable;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import java.util.regex.*;
 
 public class MongoDBLikeServerV3 {
-   /* ConcurrentHashMap<String, Database> currentDB = new ConcurrentHashMap<>();
+    public static void main(String[] args) throws JsonProcessingException {
+        String[] queries = {
+                "FIND orders",
+                "FIND users { \"age\": { \"$gt\": 30 } }",
+                "FIND transactions { \"amount\": 100, \"status\": \"pending\" }",
+                "FIND orders {\"orderTotal\": {\"$gt\": 500}}",
+                "FIND customers {\"customerId\": {\"$in\": FIND orders {\"orderTotal\": {\"$gt\": 500}}}}",
+                "xyz FIND JOIN z { \"product\": \"Laptop\" } y { \"productName\": \"Laptop\" } ON product = productName",
+                "FIND JOIN z { \"product\": \"Laptop\" } y  ON product = productName",
+                "FIND JOIN z  y { \"productName\": \"Laptop\" } ON product = productName",
+                "FIND JOIN z  y { \"productName\": {FIND JOIN z  y { \"productName\": \"Laptop\" } ON product = productName} } ON product = productName"
+        };
 
-    public static void main(String[] args) {
-        // Add this line
-       TransactionManager txManager = new TransactionManager();
-
-        // Add this line
-       ClientHandler clientHandler = new ClientHandler();
-
-        // Add this line
-       Thread clientThread = new Thread(clientHandler);
-        clientThread.start();
-    }
-
- static    class TransactionManager {
-        private final Map<Long, Transaction> activeTransactions = new ConcurrentHashMap<>();
-
-        private final AtomicLong txIdCounter = new AtomicLong(0);
-
-        public long beginTransaction() {
-            long txId = txIdCounter.incrementAndGet();
-            activeTransactions.put(txId, new Transaction(txId));
-            return txId;
-        }
-
-        public Transaction getTransaction(long txId) {
-            return activeTransactions.get(txId);
-        }
-
-
-        public void commitTransaction(long txId) throws TransactionException {
-            Transaction tx = activeTransactions.remove(txId);
-            if (tx == null) {
-                throw new TransactionException("Transaction not found");
-            }
-
-            try {
-                tx.commit();
-            } catch (TransactionException e) {
-                tx.rollback();
-                throw e;
-            } finally {
-                tx.cleanup();
-            }
-        }
-
-        public void rollbackTransaction(long txId) {
-            Transaction tx = activeTransactions.remove(txId);
-            if (tx != null) {
-                tx.rollback();
-            }
+        for (String query : queries) {
+            System.out.println("Query: " + query);
+            String result = processNestedQueries(query);
+            System.out.println("Extracted: " + result);
+            System.out.println("---------------------------------");
         }
     }
 
-    static class Database implements Serializable {
-        private final Map<String, Collection> collections = new ConcurrentHashMap<>();
+    private static String processNestedQueries(String query) {
+        String beginning = firstWord(query);
+        String command = removeFirstWord(query);
 
-        public Collection getCollection(String name) {
-            return collections.computeIfAbsent(name, k -> new Collection());
+        // Track processed parts of the query
+        StringBuilder processedQuery = new StringBuilder();
+
+        while (true) {
+            String nestedQuery = extractFindQuery(command);
+            if (nestedQuery == null || nestedQuery.isEmpty()) break;
+
+            // Process nested queries
+            String smaller = processNestedQueries(nestedQuery);
+            processedQuery.append(smaller).append(" ");
+
+            // Remove processed nested query
+            command = command.replace(nestedQuery, "").trim();
         }
+
+        return beginning + " " + processedQuery.toString().trim();
     }
 
-
-    // Transaction Class
-
-
-    // Modified Collection Class
-    static class Collection implements Serializable {
-        // Add version tracking to documents
-        private final Map<String, Map<String, Object>> documents = new ConcurrentHashMap<>();
-        private final Map<String, Integer> versions = new ConcurrentHashMap<>();
-
-        public Map<String, Object> getDocumentForTransaction(String documentId, Transaction tx) {
-            Map<String, Object> doc = documents.get(documentId);
-            if (doc != null && tx != null) {
-                tx.recordSnapshot("default", documentId, doc, versions.get(documentId));
-            }
-            return doc;
-        }
-
-        // Modified existing methods to use versions
-        public String insert(Map<String, Object> document, Transaction tx) {
-            String id = UUID.randomUUID().toString();
-            if (tx != null) {
-                tx.addOperation(new Transaction.Operation(
-                        Transaction.OperationType.INSERT, "default", id, document));
-            } else {
-                documents.put(id, document);
-                versions.put(id, 0);
-            }
-            return id;
-        }
-
-        public boolean update(String id, Map<String, Object> updates, Transaction tx) {
-            if (tx != null) {
-                Map<String, Object> existing = documents.get(id);
-                tx.addOperation(new Transaction.Operation(
-                        Transaction.OperationType.UPDATE, "default", id, updates));
-                return true;
-            } else {
-                if (!documents.containsKey(id)) return false;
-                documents.get(id).putAll(updates);
-                versions.put(id, versions.get(id) + 1);
-                return true;
-            }
-        }
-
-        // Similar modifications for delete and other methods
+    public static String removeFirstWord(String str) {
+        String[] words = str.split(" ", 2);
+        return (words.length > 1) ? words[1] : "";
     }
 
-    // Updated ClientHandler
-    private static class ClientHandler implements Runnable {
-        private Long currentTransactionId = null;
-        private final TransactionManager txManager = new TransactionManager();
+    public static String firstWord(String str) {
+        return str.split(" ", 2)[0];
+    }
 
-        private String processCommand(String command, String args) {
-            try {
-                switch (command) {
-                    case "BEGIN":
-                        if (currentTransactionId != null) {
-                            return "ERROR: Already in transaction";
-                        }
-                        currentTransactionId = txManager.beginTransaction();
-                        return "TX:" + currentTransactionId;
+    public static String extractFindQuery(String input) {
+        String findJoinRegex = "FIND\\s+JOIN\\s+\\w+(?:\\s*\\{[^{}]*\\})?\\s+\\w+(?:\\s*\\{[^{}]*\\})?\\s+ON\\s+\\w+\\s*=\\s*\\w+";
+        Pattern pattern = Pattern.compile(findJoinRegex);
+        Matcher matcher = pattern.matcher(input);
 
-                    case "COMMIT":
-                        if (currentTransactionId == null) {
-                            return "ERROR: No active transaction";
-                        }
-                        txManager.commitTransaction(currentTransactionId);
-                        currentTransactionId = null;
-                        return "Commit successful";
+        if (matcher.find()) {
+            return matcher.group();
+        }
 
-                    case "ROLLBACK":
-                        if (currentTransactionId == null) {
-                            return "ERROR: No active transaction";
-                        }
-                        txManager.rollbackTransaction(currentTransactionId);
-                        currentTransactionId = null;
-                        return "Rollback successful";
+        int findIndex = input.indexOf("FIND");
+        if (findIndex == -1) return null;
 
-                    case "INSERT":
-                        Transaction tx = currentTransactionId != null ?
-                                txManager.getTransaction(currentTransactionId) : null;
-                        Map<String, Object> doc = mapper.readValue(args, Map.class);
-                        String id = currentDB.getCollection("default").insert(doc, tx);
-                        return "Document ID: " + id;
+        int braceCount = 0;
+        boolean insideFind = false;
+        StringBuilder result = new StringBuilder();
 
-                    case "UPDATE":
-                        // Similar transaction-aware handling
+        for (int i = findIndex; i < input.length(); i++) {
+            char c = input.charAt(i);
+            result.append(c);
 
-                        // Other commands...
+            if (c == '{') {
+                braceCount++;
+                insideFind = true;
+            } else if (c == '}') {
+                braceCount--;
+            }
+
+            if (insideFind && braceCount == 0) {
+                break;
+            }
+        }
+
+        return result.toString().trim();
+    }
+}
+
+    /*    public static String extractLargestFind(String query) {
+            // Regular expression pattern to match FIND and FIND JOIN statements
+            String regex = "FIND JOIN\\s+(\\w+)\\s*(\\{.*?\\})?\\s+(\\w+)\\s*(\\{.*?\\})?\\s+ON\\s+(\\w+)\\s*=\\s*(\\w+)";
+            regex = "FIND\\s+\\w+(?:\\s*\\{(?:[^{}]*|\\{(?:[^{}]*|\\{[^{}]*\\})*\\})*\\})?";
+
+            Pattern pattern = Pattern.compile(regex, Pattern.DOTALL);
+            Matcher matcher = pattern.matcher(query);
+
+            String largestFind = null;
+
+            // Iterate over all matches
+            while (matcher.find()) {
+                String match = matcher.group();
+                if (largestFind == null || match.length() > largestFind.length()) {
+                    largestFind = match;
                 }
-            } catch (TransactionException e) {
-                currentTransactionId = null;
-                return "TX ERROR: " + e.getMessage();
             }
-            return "nothing";
+
+            return largestFind;
         }
 
-        @Override
-        public void run() {
+        /*
+    public static String extractFindJoinQuery(String input) {
+        String regex = "FIND\\s+JOIN\\s+\\w+(?:\\s*\\{.*?\\})?\\s+\\w+(?:\\s*\\{.*?\\})?\\s+ON\\s+.*";
 
+        Pattern pattern = Pattern.compile(regex, Pattern.DOTALL);
+        Matcher matcher = pattern.matcher(input);
+
+        if (matcher.find()) {
+            return matcher.group();
+        } else {
+            return "No FIND JOIN query found!";
         }
     }
-}
-/**
- * BEGIN
- * TX:123
- * INSERT {"name": "Alice", "balance": 100}
- * UPDATE account-123 {"balance": 50}
- * COMMIT
- * To Improve:
- *
- * Implement multi-version concurrency control (MVCC)
- *
- * Add proper isolation levels
- *
- * Support distributed transactions
- *
- * Add transaction logging for recovery
- *
- * Implement deadlock detection
- */
+*/
+    //      String query1 = " IND customers {\"customerId\": {\"$in\": FIND orders {\"orderTotal\": {\"$gt\": 500}}}}";
+    //      String query2 = "customers {\"customerId\": {\"$in\": FIND JOIN orders{\"orderTotal\": {\"data\": 500}} customers {\"orderTotal\": {\"$gt\": 500}} ON customerId = customerId  }}";
+    //       String query3 = "customers {\"customerId\": {\"$in\": FIND JOIN orders customers {\"orderTotal\": {\"$gt\": 500}} ON customerId = customerId  }}";
+     /* public static String extractFindQuery(String input) {
+          int findIndex = input.indexOf("FIND");
+          if (findIndex == -1) return null; // No FIND found
 
-/**
- * BEGIN
- * TX:123
- * INSERT {"name": "Alice", "balance": 100}
- * UPDATE account-123 {"balance": 50}
- * COMMIT
- */
-}
+          int braceCount = 0;
+          boolean insideFind = false;
+          StringBuilder result = new StringBuilder();
+
+          for (int i = findIndex; i < input.length(); i++) {
+              char c = input.charAt(i);
+              result.append(c);
+
+              if (c == '{') {
+                  braceCount++;
+                  insideFind = true;
+              } else if (c == '}') {
+                  braceCount--;
+              }
+
+              // If we've captured a full `FIND` statement, stop
+              if (insideFind && braceCount == 0) {
+                  break;
+              }
+          }
+
+          return result.toString();
+      }*/
+
+
+

@@ -3,12 +3,11 @@ package org.example.nosql.transaction.transaction;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
-import org.example.nosql.transaction.Utils.Database;
+import org.example.nosql.transaction.Utils.SaveData;
+import org.example.nosql.transaction.structure.Database;
 import org.example.nosql.transaction.Utils.Utils;
 import org.example.nosql.transaction.exceptions.TransactionException;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -39,8 +38,8 @@ public class Transaction {
     }
 
     private void applyOperations(Map<String, Database> database) {
-        Utils utils=new Utils();
-        utils.saveDatabases(database);
+        SaveData saveData=new SaveData();
+        saveData.saveDatabases(database);
         System.out.println("Commited successfully");
     }
 

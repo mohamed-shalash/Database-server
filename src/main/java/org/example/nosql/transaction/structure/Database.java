@@ -1,4 +1,4 @@
-package org.example.nosql.transaction.Utils;
+package org.example.nosql.transaction.structure;
 
 import lombok.Getter;
 import lombok.Setter;

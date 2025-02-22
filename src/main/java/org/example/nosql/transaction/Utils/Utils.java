@@ -1,33 +1,78 @@
 package org.example.nosql.transaction.Utils;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.example.nosql.transaction.structure.Collections;
+import org.example.nosql.transaction.structure.Database;
+
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Utils {
-    private static final String SAVE_FILE = "database.ser";
-    public static synchronized  void saveDatabases(Map<String, Database> databases) {
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(SAVE_FILE))) {
-            oos.writeObject(new ConcurrentHashMap<>(databases));
-            System.out.println("Database snapshot saved");
-        } catch (IOException e) {
-            System.err.println("Failed to save databases: " + e.getMessage());
-        }
-    }
+    public List<String> extractJsonObjects(String command) {
+        List<String> jsonObjects = new ArrayList<>();
+        int openBraces = 0;
+        StringBuilder currentJson = new StringBuilder();
 
-    @SuppressWarnings("unchecked")
-    public static synchronized ConcurrentHashMap<String, Database> loadDatabases() {
-        File file = new File(SAVE_FILE);
-        ConcurrentHashMap<String, Database> loaded=new ConcurrentHashMap<>();
-        if (file.exists()) {
-            try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
-                loaded = (ConcurrentHashMap<String, Database>) ois.readObject();
-                //databases.putAll(loaded);
-                System.out.println("Loaded databases from disk");
-            } catch (IOException | ClassNotFoundException e) {
-                System.err.println("Failed to load databases: " + e.getMessage());
+        for (char c : command.toCharArray()) {
+            if (c == '{') {
+                openBraces++;
+            }
+
+            if (openBraces > 0) {
+                currentJson.append(c);
+            }
+
+            if (c == '}') {
+                openBraces--;
+
+                // If we closed all braces, we have a full JSON object
+                if (openBraces == 0) {
+                    jsonObjects.add(currentJson.toString().trim());
+                    currentJson.setLength(0); // Reset for the next JSON object
+                }
             }
         }
-        return loaded;
+
+        return jsonObjects;
+    }
+
+    public static String removeFirstWord(String str) {
+        String[] words = str.split(" ", 2);
+        return (words.length > 1) ? words[1] : "";
+    }
+
+    public static String firstWord(String str) {
+        return str.split(" ", 2)[0];
+    }
+
+    public int compare(Object a, Object b) {
+        if (a instanceof Comparable && b instanceof Comparable) {
+            return ((Comparable) a).compareTo(b);
+        }
+        return 0;
+    }
+
+    public Map<String,Object> parseJson(String input) throws JsonProcessingException {
+        System.out.println(input);
+        String json = input
+                .replaceAll("([a-zA-Z0-9_]+)\\s*:", "\"$1\":") // Quote keys
+                .replaceAll(":\\s*([a-zA-Z_]+)(?=[,}])", ":\"$1\""); // Quote only non-number values
+
+        System.out.println("Normalized JSON: " + json);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        return objectMapper.readValue(json, Map.class);
+    }
+
+    public org.example.nosql.transaction.structure.Collections getCollection(String collectionName,Map<String, Database> databases,String currentDatabase) {
+        try {
+            Database db = databases.get(currentDatabase);
+            return (db != null) ? db.getCollections().get(collectionName) : null;
+        }catch (Exception e){
+            return new Collections();
+        }
+
     }
 }

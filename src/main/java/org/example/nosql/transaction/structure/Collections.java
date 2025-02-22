@@ -1,4 +1,4 @@
-package org.example.nosql.transaction.Utils;
+package org.example.nosql.transaction.structure;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -8,7 +8,6 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentSkipListMap;
 
 @Getter
 @Setter
